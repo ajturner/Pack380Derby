@@ -1,5 +1,6 @@
 import { fetchPinewoodAPI } from "./api";
 import { fetchCarById, Car } from "./cars";
+import { RankType } from "./racers";
 
 export interface ResultItem {
 	carId: number | string;
@@ -15,13 +16,12 @@ export interface ResultItem {
  * @returns A promise that resolves to the results data for the specified rank.
  * @throws Will throw an error if the API request fails.
  */
-export async function fetchAllResultsByRank(rank: string): Promise<ResultItem[]> {
-	const res = await fetchPinewoodAPI(`/api/results/all-by-rank/${rank}`);
+export async function fetchAllResultsByRank(rank: RankType): Promise<ResultItem[]> {
+	const res = await fetchPinewoodAPI(`/api/results?include=${rank}`);
 	if (!res.ok) throw new Error(`Failed to fetch results for rank ${rank}`);
 
 
 		const results: Array<Partial<ResultItem>> = await res.json();
-		console.log(`fetchResultsByRank( ${rank} ) -> `, results);
 		// Attach car and racer info to each result
 		const enriched = await Promise.all(results.map(async (result) => {
 			let car = null;
@@ -32,7 +32,6 @@ export async function fetchAllResultsByRank(rank: string): Promise<ResultItem[]>
 			return { ...result, car } as ResultItem;
 		}));
 
-		console.log(`fetchResultsByRank( ${rank} ) enriched -> `, enriched);
 
 		return enriched;
 }
@@ -45,13 +44,13 @@ export async function fetchAllResultsByRank(rank: string): Promise<ResultItem[]>
  * @returns A promise that resolves to the results data for the specified rank.
  * @throws Will throw an error if the API request fails.
  */
-export async function fetchResultsByRank(rank: string): Promise<ResultItem[]> {
-	const res = await fetchPinewoodAPI(`/api/results/final-by-rank/${rank}`);
+export async function fetchResultsByRank(rank: RankType): Promise<ResultItem[]> {
+	const res = await fetchPinewoodAPI(`/api/results?include=${rank}`);
 	if (!res.ok) throw new Error(`Failed to fetch results for rank ${rank}`);
 
 
 		const results: Array<Partial<ResultItem>> = await res.json();
-		console.log(`fetchResultsByRank( ${rank} ) -> `, results);
+
 		// Attach car and racer info to each result
 		const enriched = await Promise.all(results.map(async (result) => {
 			let car = null;
@@ -61,8 +60,6 @@ export async function fetchResultsByRank(rank: string): Promise<ResultItem[]> {
 			}
 			return { ...result, car } as ResultItem;
 		}));
-
-		console.log(`fetchResultsByRank( ${rank} ) enriched -> `, enriched);
 
 		return enriched;
 }

@@ -236,7 +236,7 @@ export class ResultsService {
     });
 
     // Group results by carId and calculate weighted score across all races
-    const carResults = new Map<number, { rank: string; totalPlace: number }>();
+    const carResults = new Map<number, { rank: string; weightedTotal: number }>();
 
     console.log('API: Heat lanes considered for non-finals:', heatLanes);
     console.log(
@@ -250,33 +250,33 @@ export class ResultsService {
         const existing = carResults.get(lane.carId);
         const racerRank = lane.car?.racer?.rank || rank;
         if (existing) {
-          existing.totalPlace += weightedScore;
+          existing.weightedTotal += weightedScore;
         } else {
           carResults.set(lane.carId, {
             rank: racerRank,
-            totalPlace: weightedScore,
+            weightedTotal: weightedScore,
           });
         }
       }
     });
 
-    // Convert to array and sort by totalPlace (ascending - lower is better)
+    // Convert to array and sort by weightedTotal (ascending - lower is better)
     const sortedResults = Array.from(carResults.entries())
       .map(([carId, data]) => ({
         carId,
         rank: data.rank,
         raceType: undefined, // Not applicable since we're aggregating across all race types
-        totalPlace: data.totalPlace,
+        weightedTotal: data.weightedTotal,
       }))
-      .sort((a, b) => a.totalPlace - b.totalPlace);
+      .sort((a, b) => a.weightedTotal - b.weightedTotal);
 
     // Return all cars with the best score (handles ties)
     if (sortedResults.length === 0) {
       return [];
     }
 
-    const topScore = sortedResults[0].totalPlace;
-    return sortedResults.filter(result => result.totalPlace === topScore);
+    const topScore = sortedResults[0].weightedTotal;
+    return sortedResults.filter(result => result.weightedTotal === topScore);
   }
   
 }

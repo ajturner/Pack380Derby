@@ -36,44 +36,100 @@ export class RaceService {
       throw new Error(`Cannot create ${targetStage}: no previous stage found`);
     }
 
-    // Get results from the previous stage and its corresponding deadheat stage
-    const results = await this.getStageResults(previousStage, racerType);
-
-    this.logger.debug(`results from previous stage (${previousStage}): ${JSON.stringify(results)}`);
-
     // Calculate who advances to the target stage
     const advancingCount = await this.progression.calculateAdvancingCount(targetStage, numLanes, racerType as RacerType);
-
     this.logger.debug(`advancingCount for ${targetStage}: ${advancingCount}`);
 
-    const { advancing, needsTiebreaker, tiedCarIds } = 
-      await this.progression.determineAdvancingResults(results, advancingCount);
+    // Check if deadheat exists and has results
+    const deadheatStage = this.progression.getDeadheatStage(previousStage);
+    let hasDeadheatResults = false;
+    
+    if (deadheatStage) {
+      const deadheatCheck = await this.prisma.heatLane.findFirst({
+        where: {
+          raceType: deadheatStage,
+          racerType: racerType,
+        },
+      });
+      hasDeadheatResults = deadheatCheck !== null;
+    }
 
-    this.logger.debug(`needsTiebreaker: ${needsTiebreaker}`);
-    this.logger.debug(`tiedCarIds: ${JSON.stringify(tiedCarIds)}`);
-    this.logger.debug(`these cars are advancing: ${JSON.stringify(advancing)}`);
+    this.logger.debug(`hasDeadheatResults: ${hasDeadheatResults}`);
 
-    // Either handle tie breakers if needed by creating deadheat, or create the target stage's race with all the advancers
-    if (needsTiebreaker) {
-      const deadheatStage = this.progression.getDeadheatStage(previousStage);
+    if (hasDeadheatResults) {
+      // Deadheat exists and has results - use special logic
       if (!deadheatStage) {
         throw new Error(`No deadheat stage defined for previous stage ${previousStage}`);
       }
-      return this.generator.createDeadheatRace(
-        tiedCarIds,
-        deadheatStage,
-        racerType as RacerType
-      );
-    }
-    else{
 
-    // Create target stage race
+      // Get preliminary results only (without deadheat)
+      const prelimResults = await this.getStageResultsOnly(previousStage, racerType);
+      this.logger.debug(`prelim-only results: ${JSON.stringify(prelimResults)}`);
+
+      // Determine who definitely advances and who was tied from prelims
+      const { advancing: definitelyAdvancing, needsTiebreaker, tiedCarIds } = 
+        await this.progression.determineAdvancingResults(prelimResults, advancingCount);
+
+      this.logger.debug(`definitelyAdvancing from prelims: ${JSON.stringify(definitelyAdvancing)}`);
+      this.logger.debug(`tiedCarIds from prelims: ${JSON.stringify(tiedCarIds)}`);
+
+      // Get deadheat results for the tied cars
+      const deadheatResults = await this.getStageResultsOnly(deadheatStage, racerType);
+      this.logger.debug(`deadheat results: ${JSON.stringify(deadheatResults)}`);
+
+      // Filter to only include cars that were in the tied set
+      const tiedCarsDeadheatResults = deadheatResults.filter(r => tiedCarIds.includes(r.carId));
+      
+      // Calculate how many spots remain for the tied cars
+      const spotsRemaining = advancingCount - definitelyAdvancing.length;
+      this.logger.debug(`spotsRemaining for deadheat winners: ${spotsRemaining}`);
+
+      // Sort tied cars by their deadheat results and take top N
+      const sortedTiedCars = tiedCarsDeadheatResults.sort((a, b) => a.totalScore - b.totalScore);
+      const advancingFromDeadheat = sortedTiedCars.slice(0, spotsRemaining).map(r => r.carId);
+
+      this.logger.debug(`advancingFromDeadheat: ${JSON.stringify(advancingFromDeadheat)}`);
+
+      // Combine definitely advancing with deadheat winners
+      const allAdvancing = [...definitelyAdvancing, ...advancingFromDeadheat];
+      this.logger.debug(`total advancing to ${targetStage}: ${JSON.stringify(allAdvancing)}`);
+
+      // Create target stage race
       return this.generator.createNextStageRace(
-        advancing,
+        allAdvancing,
         targetStage,
         racerType as RacerType
       );
+    } else {
+      // No deadheat results yet - use normal logic
+      const results = await this.getStageResultsOnly(previousStage, racerType);
+      this.logger.debug(`results from previous stage (${previousStage}): ${JSON.stringify(results)}`);
 
+      const { advancing, needsTiebreaker, tiedCarIds } = 
+        await this.progression.determineAdvancingResults(results, advancingCount);
+
+      this.logger.debug(`needsTiebreaker: ${needsTiebreaker}`);
+      this.logger.debug(`tiedCarIds: ${JSON.stringify(tiedCarIds)}`);
+      this.logger.debug(`these cars are advancing: ${JSON.stringify(advancing)}`);
+
+      // Either handle tie breakers if needed by creating deadheat, or create the target stage's race with all the advancers
+      if (needsTiebreaker) {
+        if (!deadheatStage) {
+          throw new Error(`No deadheat stage defined for previous stage ${previousStage}`);
+        }
+        return this.generator.createDeadheatRace(
+          tiedCarIds,
+          deadheatStage,
+          racerType as RacerType
+        );
+      } else {
+        // Create target stage race
+        return this.generator.createNextStageRace(
+          advancing,
+          targetStage,
+          racerType as RacerType
+        );
+      }
     }
 
     
@@ -180,15 +236,10 @@ async findRoundByRaceType(raceType: number) {
   }
 
   async getStageResults(stage: RaceStage, racerType: string): Promise<Array<{ carId: number; totalScore: number }>> {
-    // Get all heat results for this stage and its corresponding deadheat stage
-    const deadheatStage = this.progression.getDeadheatStage(stage);
-    const stages = deadheatStage ? [stage, deadheatStage] : [stage];
-
-    const heatResults = await this.prisma.heatLane.findMany({
+    // Get heat results for the main stage
+    const mainStageResults = await this.prisma.heatLane.findMany({
       where: {
-        raceType: {
-          in: stages
-        },
+        raceType: stage,
         racerType: racerType,
         car: {
           name: { not: 'blank' } // Exclude blank cars
@@ -206,11 +257,82 @@ async findRoundByRaceType(raceType: number) {
       ]
     });
 
+    // Group main stage results by car and calculate total score
+    const mainResultMap = new Map<number, number>();
+    
+    for (const heat of mainStageResults) {
+      if (heat.carId !== null) {
+        const currentTotal = mainResultMap.get(heat.carId) ?? 0;
+        const resultValue = heat.result ?? 0;
+        mainResultMap.set(heat.carId, currentTotal + resultValue);
+      }
+    }
+
+    // Check if there's a deadheat stage and if it has results
+    const deadheatStage = this.progression.getDeadheatStage(stage);
+    
+    if (deadheatStage) {
+      const deadheatResults = await this.prisma.heatLane.findMany({
+        where: {
+          raceType: deadheatStage,
+          racerType: racerType,
+          car: {
+            name: { not: 'blank' }
+          }
+        },
+        select: {
+          carId: true,
+          result: true
+        }
+      });
+
+      // If deadheat results exist, use those scores for cars that participated
+      if (deadheatResults.length > 0) {
+        const deadheatResultMap = new Map<number, number>();
+        
+        for (const heat of deadheatResults) {
+          if (heat.carId !== null) {
+            const currentTotal = deadheatResultMap.get(heat.carId) ?? 0;
+            const resultValue = heat.result ?? 0;
+            deadheatResultMap.set(heat.carId, currentTotal + resultValue);
+          }
+        }
+
+        // Replace main stage scores with deadheat scores for cars that participated in deadheat
+        for (const [carId, score] of deadheatResultMap.entries()) {
+          mainResultMap.set(carId, score);
+        }
+      }
+    }
+
+    // Convert to array of results
+    return Array.from(mainResultMap.entries()).map(([carId, totalScore]) => ({
+      carId,
+      totalScore
+    }));
+  }
+
+  async getStageResultsOnly(stage: RaceStage, racerType: string): Promise<Array<{ carId: number; totalScore: number }>> {
+    // Get heat results for only the specified stage (no deadheat merging)
+    const stageResults = await this.prisma.heatLane.findMany({
+      where: {
+        raceType: stage,
+        racerType: racerType,
+        car: {
+          name: { not: 'blank' } // Exclude blank cars
+        }
+      },
+      select: {
+        carId: true,
+        result: true,
+      },
+    });
+
     // Group results by car and calculate total score
     const resultMap = new Map<number, number>();
     
-    for (const heat of heatResults) {
-      if (heat.carId !== null) {  // Ensure carId is not null
+    for (const heat of stageResults) {
+      if (heat.carId !== null) {
         const currentTotal = resultMap.get(heat.carId) ?? 0;
         const resultValue = heat.result ?? 0;
         resultMap.set(heat.carId, currentTotal + resultValue);
@@ -255,6 +377,13 @@ async findRoundByRaceType(raceType: number) {
       return null as any;
     } 
     
+    // Delete associated HeatLane records first due to foreign key constraint
+    await this.prisma.heatLane.deleteMany({
+      where: {
+        raceId: id,
+      },
+    });
+    
     return await this.prisma.race.delete({
         where: {
           id: id,
@@ -281,11 +410,9 @@ async findRoundByRaceType(raceType: number) {
     try {
       // Convert buffer to string and normalize line endings
       const content = fileBuffer.toString('utf-8').replace(/\r\n/g, '\n');
-      console.log('Raw content:', content);
       
       // Split into lines and remove empty lines
       const lines = content.split('\n').filter(line => line.trim().length > 0);
-      console.log('Lines after split:', lines);
       
       if (lines.length === 0) {
         throw new BadRequestException('CSV file is empty');
@@ -293,7 +420,7 @@ async findRoundByRaceType(raceType: number) {
 
       // Validate header
       const header = lines[0].toLowerCase().trim();
-      console.log('Header:', header);
+
       if (header !== 'racename,numlanes,racetype,racertype') {
         throw new BadRequestException(
           `Invalid CSV header. Expected: 'racename,numlanes,racetype,racertype', Got: '${header}'`
@@ -303,10 +430,8 @@ async findRoundByRaceType(raceType: number) {
       // Process each line
       for (const line of lines.slice(1)) {
         try {
-          console.log('Processing line:', line);
           
           const fields = line.split(',').map(field => field.trim());
-          console.log('Split fields:', fields);
           
           if (fields.length !== 4) {
             throw new Error(`Expected 4 fields, but got ${fields.length} fields`);
@@ -352,7 +477,6 @@ async findRoundByRaceType(raceType: number) {
             }
           });
 
-          console.log('Successfully created race:', raceName);
           results.success++;
         } catch (error) {
           console.error('Error processing line:', line, error);

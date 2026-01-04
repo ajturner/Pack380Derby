@@ -9,9 +9,8 @@ interface CarFormProps {
   onChange: (car: Omit<Car, "id">) => void;
   racer: Racer;
   hideSubmit?: boolean;
-  onSubmit?: (car: Omit<Car, "id">) => void | Promise<void>; // parent handles submit
+  onSubmit?: () => void; // parent handles submit
 }
-
 export default function CarForm({ car, onChange, racer, hideSubmit, onSubmit }: CarFormProps) {
 
   function handleChange<K extends keyof Omit<Car, "id">>(field: K, value: Omit<Car, "id">[K]) {
@@ -81,7 +80,7 @@ export default function CarForm({ car, onChange, racer, hideSubmit, onSubmit }: 
 
   function handleInternalSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSubmit?.(car);
+    onSubmit?.();
   }
 
   return (
