@@ -57,7 +57,7 @@ export default function VotingAdminPage() {
   if (error) return <Layout><div className="text-center text-red-500">{error}</div></Layout>;
 
   function getCar(carId: string | number): Car | undefined {
-    return cars.find((c: Car) => String(c.id) === String(carId));
+    return cars.find(c => String(c.id) === String(carId));
   }
 
   return (
