@@ -8,7 +8,7 @@ describe('HeatLaneController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HeatLaneController],
-      providers: [HeatLaneService],
+      providers: [{ provide: HeatLaneService, useValue: {} }],
     }).compile();
 
     controller = module.get<HeatLaneController>(HeatLaneController);

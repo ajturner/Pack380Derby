@@ -3,7 +3,6 @@ import { CarService } from './car.service';
 import { Car } from '@prisma/client';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
-import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 describe('CarService', () => {
@@ -115,14 +114,16 @@ describe('CarService', () => {
 
       expect(mockPrismaService.car.findUnique).toHaveBeenCalledWith({
         where: { id: 1 },
+        include: { racer: true },
       });
       expect(result).toEqual(mockCar);
     });
 
-    it('should throw NotFoundException when car not found', async () => {
+    // The service returns null for a missing car; CarController turns that into a 404.
+    it('should return null when car not found', async () => {
       mockPrismaService.car.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(999)).resolves.toBeNull();
     });
   });
 
@@ -149,12 +150,13 @@ describe('CarService', () => {
       expect(result).toEqual(updatedCar);
     });
 
-    it('should throw NotFoundException when updating non-existent car', async () => {
+    it('should return null when updating non-existent car', async () => {
       const updateCarDto: UpdateCarDto = { name: 'Updated Car' };
       
       mockPrismaService.car.findUnique.mockResolvedValue(null);
 
-      await expect(service.update(999, updateCarDto)).rejects.toThrow(NotFoundException);
+      await expect(service.update(999, updateCarDto)).resolves.toBeNull();
+      expect(mockPrismaService.car.update).not.toHaveBeenCalled();
     });
   });
 
@@ -173,10 +175,11 @@ describe('CarService', () => {
       });
     });
 
-    it('should throw NotFoundException when removing non-existent car', async () => {
+    it('should return null when removing non-existent car', async () => {
       mockPrismaService.car.findUnique.mockResolvedValue(null);
 
-      await expect(service.remove(999)).rejects.toThrow(NotFoundException);
+      await expect(service.remove(999)).resolves.toBeNull();
+      expect(mockPrismaService.car.delete).not.toHaveBeenCalled();
     });
   });
 

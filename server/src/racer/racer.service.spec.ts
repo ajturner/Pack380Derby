@@ -79,21 +79,21 @@ describe('RacerService', () => {
   });
 
   describe('getOne', () => {
-    it('should get a single racer', () => {
-      expect(service.findOne(1)).resolves.toEqual(oneRacer);
+    it('should get a single racer', async () => {
+      await expect(service.findOne(1)).resolves.toEqual(oneRacer);
     });
 
-    it('should return error message due to invalid id', () => {
+    it('should return error message due to invalid id', async () => {
       const dbSpy = jest
         .spyOn(prisma.racer, 'findUnique')
         .mockRejectedValueOnce(new Error('Racer with 4 does not exist.'));
-      expect(service.findOne(4)).rejects.toThrow('Racer with 4 does not exist.')
+      await expect(service.findOne(4)).rejects.toThrow('Racer with 4 does not exist.')
     });
   });
 
    describe('createOne', () => {
-    it('should successfully create a cub', () => {
-      expect(
+    it('should successfully create a cub', async () => {
+      await expect(
         service.createRacer({
           name: 'Racer 1',
           den: '8',
@@ -106,13 +106,14 @@ describe('RacerService', () => {
       const dbSpy = jest
         .spyOn(prisma.racer, 'create')
         .mockRejectedValueOnce(new Error('Invalid Rank'));
-      expect(service.createRacer({name: 'Racer 1', den: '8', rank: 'tigger'})).rejects.toThrow('Invalid Rank')
+      await expect(service.createRacer({name: 'Racer 1', den: '8', rank: 'tigger'})).rejects.toThrow('Invalid Rank')
     });
   });
 
   describe('updateOne', () => {
     it('should call the update method', async () => {
       const cat = await service.update(2, {
+        id: 2,
         name: 'Racer 1',
         den: '8',
         rank: 'tiger',
@@ -124,24 +125,24 @@ describe('RacerService', () => {
       const dbSpy = jest
         .spyOn(prisma.racer, 'update')
         .mockRejectedValueOnce(new Error('Racer with 4 does not exist.'));
-      expect(service.update(4, {name: 'Racer 1', den: '8', rank: 'tiger'})).rejects.toThrow('Racer with 4 does not exist.')
+      await expect(service.update(4, {id: 4, name: 'Racer 1', den: '8', rank: 'tiger'})).rejects.toThrow('Racer with 4 does not exist.')
     });
   });
 
   describe('deleteOne', () => {
-    it('should return value of deleted', () => {
-      expect(service.remove(1)).resolves.toEqual(oneRacer);
+    it('should return value of deleted', async () => {
+      await expect(service.remove(1)).resolves.toEqual(oneRacer);
     });
 
-    it('should return error message due to invalid id', () => {
+    it('should return error message due to invalid id', async () => {
       const dbSpy = jest
         .spyOn(prisma.racer, 'delete')
         .mockRejectedValueOnce(new Error('Racer with 4 does not exist.'));
-      expect(service.remove(4)).rejects.toThrow('Racer with 4 does not exist.')
+      await expect(service.remove(4)).rejects.toThrow('Racer with 4 does not exist.')
     });
   });
 
-  /*it('should be defined', () => {
+  /*it('should be defined', async () => {
     expect(service).toBeDefined();
   });*/
 
@@ -169,8 +170,8 @@ beforeEach(async () => {
 
 
   describe('createAdult', () => {
-    it('should successfully create an adult', () => {
-      expect(
+    it('should successfully create an adult', async () => {
+      await expect(
         service.createRacer({
           name: 'Racer 3',
           den: 'adult',
@@ -203,8 +204,8 @@ beforeEach(async () => {
 
 
   describe('createAdult', () => {
-    it('should successfully create a sibling', () => {
-      expect(
+    it('should successfully create a sibling', async () => {
+      await expect(
         service.createRacer({
           name: 'Racer 4',
           den: 'sibling',
