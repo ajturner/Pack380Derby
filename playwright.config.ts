@@ -74,12 +74,29 @@ export default defineConfig({
     // },
   ],
 
-  /* Run your local dev server before starting the tests */
-  // webServer: {
-  //   command: 'npm run start:all',
-  //   url: 'http://localhost:3000',
-  //   reuseExistingServer: !process.env.CI,
-  //   timeout: 12 * 1000, // Increase if needed
-
-  // },
+  /* Start the API server and the web app before the tests run. */
+  webServer: [
+    {
+      command: 'cd server && npm run build && node dist/src/main.js',
+      url: 'http://localhost:3000/api/docs',
+      reuseExistingServer: !process.env.CI,
+      timeout: 180 * 1000,
+      env: {
+        NODE_ENV: 'test',
+        DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://derby:derby@localhost:5432/pinewood_derby',
+        API_BEARER_TOKEN: process.env.API_BEARER_TOKEN ?? 'local-dev-token',
+        USE_SSL: 'false',
+      },
+    },
+    {
+      command: 'cd app && npm run build && npm run app:start',
+      url: 'http://localhost:3001',
+      reuseExistingServer: !process.env.CI,
+      timeout: 300 * 1000,
+      env: {
+        NEXT_PUBLIC_DERBY_API_URL: process.env.NEXT_PUBLIC_DERBY_API_URL ?? 'http://localhost:3000',
+        NEXT_PUBLIC_DERBY_API_TOKEN: process.env.API_BEARER_TOKEN ?? 'local-dev-token',
+      },
+    },
+  ],
 });
