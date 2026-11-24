@@ -139,7 +139,8 @@ dist
 # Terraform
 .terraform/
 .terraform.lock.hcl
-.tfstate.*
+*.tfstate.*
 *.tfstate
+*.tfvars
 *.backup
 iac/derby.pem
